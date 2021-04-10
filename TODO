@@ -1,0 +1,22 @@
+1. In order to enable tf.function decorator, need to pay attention to work with Tensor
+2. cuda? GPU for training
+3. seed, reset seed for every experiment
+4. train/validation/test method? N way?
+5. hyperparameters - grid search? Bayesian search?
+6. set hyperparameters search space
+7. batch normalization
+8. L2 regularization/dropout
+9. learning rate decay
+10. save/load models
+11. threshold similarity
+12. data augmentation
+13. transfer learning/resnet for instance
+14. loss method? binary cross-entropy, triplet loss, contrastive loss
+15. similarity metric? euclidean distance, weighted distance?
+16. model architecture ? related to the loss method
+17. weight initialization
+18. momentum
+19. dataset preparation
+20. EDA
+21. keras - hold model as a field or extends from model
+22.
