@@ -20,3 +20,11 @@
 20. EDA
 21. keras - hold model as a field or extends from model
 22.
+
+# TODO
+1. Siamese network - binary cross entropy based, generic for L2 and Dropout and other layers - Liad.
+2. Load the dataset as normalized tensors - Yishaia.
+3. Train validation split - ready for N-way validation - Yishaia.
+4. Preprocess the testset for N way metric score - Yishaia.
+5. Check for keras wrapped N-way functionality (via the built-in API) - Liad & Yishaia
+6. Grid search parameter space function implementation- Liad.
