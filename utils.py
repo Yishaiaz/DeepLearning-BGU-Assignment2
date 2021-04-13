@@ -64,3 +64,7 @@ def tf_log_list(writer, name, values, steps):
         for i in range(len(steps)):
             tf.summary.scalar(name, values[i], step=steps[i])
         writer.flush()
+
+
+def learning_rate_decay(epoch, lr):
+    return lr * 0.99

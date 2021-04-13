@@ -1,12 +1,11 @@
-import math
 from functools import partial
 from logging import Logger
-from typing import Tuple
+from typing import Tuple, Callable
 
 import tensorflow as tf
 from tensorflow.keras import backend as keras_backend
 from tensorflow.python.keras import Input, Sequential, Model, regularizers
-from tensorflow.python.keras.callbacks import LearningRateScheduler
+from tensorflow.python.keras.callbacks import LearningRateScheduler, EarlyStopping
 from tensorflow.python.keras.layers import Lambda, Dense, Conv2D, BatchNormalization, MaxPooling2D, Dropout, Flatten
 from tensorflow.python.keras.models import load_model
 from tensorflow.python.keras.optimizer_v2.adam import Adam
@@ -14,7 +13,7 @@ from tensorflow.python.keras.optimizer_v2.gradient_descent import SGD
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
 from tensorflow.python.ops.init_ops_v2 import RandomNormal
 
-from utils import default_log
+from utils import default_log, learning_rate_decay
 
 
 class SiameseNeuralNetwork:
@@ -184,34 +183,31 @@ class SiameseNeuralNetwork:
               X_val,
               max_epoch_num: int = 200,
               patience: int = 20,
-              seed: int = None):
+              learning_rate_decay_callback: Callable[[int, float], float] = lambda epoch, lr: learning_rate_decay(epoch, lr),
+              seed: int = None,
+              tf_writer=None):
         if self._trained:
             raise ValueError("Network was already trained")
-
-        def learning_rate_decay_callback(epoch, lr):
-            return lr * 0.99
 
         # handle seed
         if seed is not None:
             tf.random.set_seed(seed)
 
-        callbacks = []
+        early_stop_callback = EarlyStopping(monitor='val_binary_accuracy',
+                                            min_delta=0.01,
+                                            patience=patience,
+                                            verbose=1,
+                                            restore_best_weights=True)
+        callbacks = [early_stop_callback]
 
         if self._enable_learning_rate_decay_scheduler:
             callbacks.append(LearningRateScheduler(learning_rate_decay_callback))
 
         history = self.model.fit(X_train, epochs=max_epoch_num, validation_data=X_val, callbacks=callbacks)
 
-        # for epoch in range(max_epoch_num):
-        #     pass
-        #
-        #
-        #     # save best model during training
-        #
-        #     # early stopping
-
-
         self._trained = True
+
+        return history
 
     def test_n_way(self, dataset, num_tests: int, n: int = 20, is_validation: bool = False):
         """

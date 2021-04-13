@@ -127,18 +127,18 @@ def make_dataset(images_directory: str,
                                                                                                               shuffle=True,
                                                                                                               random_state=seed)
 
-        training_image_paths = np.vstack((X_matching_train, X_non_matching_train))
-        training_labels = np.vstack((y_matching_train, y_non_matching_train))
+        training_image_paths = np.vstack((X_matching_train[:32], X_non_matching_train[:32]))
+        training_labels = np.vstack((y_matching_train[:32], y_non_matching_train[:32]))
 
         val_image_paths = np.vstack((X_matching_val, X_non_matching_val))
         val_labels = np.vstack((y_matching_val, y_non_matching_val))
         return training_image_paths, training_labels, val_image_paths, val_labels
 
-    def turn_to_zipped_ds(image_paths, labels):
+    def turn_to_zipped_ds(image_paths, labels, is_training=False):
         ds = tf.data.Dataset.from_tensor_slices(image_paths)
         ds = ds.map(load_images_pairs_as_tensors, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         ds = tf.data.Dataset.zip((ds, tf.data.Dataset.from_tensor_slices(labels)))
-        ds = configure_for_performance(ds, batchsize=batch_size)
+        ds = configure_for_performance(ds, batchsize=batch_size, is_training=is_training)
         return ds
 
     # train set
@@ -152,7 +152,7 @@ def make_dataset(images_directory: str,
                                   non_matching_image_paths,
                                   non_matching_images_labels)
 
-    training_ds = turn_to_zipped_ds(training_image_paths, training_labels)
+    training_ds = turn_to_zipped_ds(training_image_paths, training_labels, is_training=True)
 
     val_ds = turn_to_zipped_ds(val_image_paths, val_labels)
 
