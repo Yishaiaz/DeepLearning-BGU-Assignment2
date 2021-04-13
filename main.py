@@ -15,7 +15,7 @@ from utils import file_path, log
 # Global configuration
 seed = 0
 lfw_a_input_shape = (250, 250, 1)
-
+images_directory = 'lfw2Data/lfw2'
 
 tf.random.set_seed(seed)
 np.random.seed(seed)
@@ -153,7 +153,12 @@ def run_experiments():
                     logger.info("#################################################################")
 
                     # preprocessing and dataset creation
-                    train_ds, val_ds, test_ds = make_dataset(batch_size, seed)
+                    train_ds, val_ds, test_ds = make_dataset(images_directory=images_directory,
+                                                             batch_size=batch_size,
+                                                             seed=seed)
+                    # YOUR VERSION
+                    # train_ds, val_ds, test_ds = make_dataset(batch_size=batch_size,
+                    #                                          seed=seed)
 
                     run(train_ds,
                         val_ds,
