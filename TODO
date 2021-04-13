@@ -28,3 +28,10 @@
 4. Preprocess the testset for N way metric score - Yishaia.
 5. Check for keras wrapped N-way functionality (via the built-in API) - Liad & Yishaia
 6. Grid search parameter space function implementation- Liad.
+7. Check how to expand keras evaluate step (i.e. like metric) - Yishaia.
+8. Different learning rates schedulers.
+9. Data augmentation - choose which one to implement: rotation (45), crop, noise (Salt&Pepper), saturation, chain [Salt&Pepper, crop center]
+10. Transfer learning with ResNet.
+11. Bayse search (hyper params).
+12. EDA
+13.
