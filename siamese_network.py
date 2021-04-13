@@ -1,9 +1,10 @@
-import tensorflow as tf
-
+import math
 from functools import partial
 from logging import Logger
 from typing import Tuple
 
+import tensorflow as tf
+from tensorflow.keras import backend as keras_backend
 from tensorflow.python.keras import Input, Sequential, Model, regularizers
 from tensorflow.python.keras.callbacks import LearningRateScheduler
 from tensorflow.python.keras.layers import Lambda, Dense, Conv2D, BatchNormalization, MaxPooling2D, Dropout, Flatten
@@ -11,7 +12,6 @@ from tensorflow.python.keras.models import load_model
 from tensorflow.python.keras.optimizer_v2.adam import Adam
 from tensorflow.python.keras.optimizer_v2.gradient_descent import SGD
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
-from tensorflow.keras import backend as keras_backend
 from tensorflow.python.ops.init_ops_v2 import RandomNormal
 
 from utils import default_log
@@ -25,7 +25,7 @@ class SiameseNeuralNetwork:
     def __init__(self,
                  input_shape: Tuple[int, int, int],
                  learning_rate: float = 0.01,
-                 batch_size: int = 128,
+                 batch_size: int = 64,
                  optimizer: str = 'sgd',
                  optimizer_loss: str = 'binary_crossentropy',
                  dense_layer_size: int = 4096,
@@ -38,8 +38,13 @@ class SiameseNeuralNetwork:
                  dropout_rate: float = None,
                  enable_learning_rate_decay_scheduler: bool = True,
                  logger: Logger = None,
-                 verbose: int = 0):
+                 verbose: int = 0,
+                 seed: int = None):
 
+        if seed is not None:
+            tf.random.set_seed(seed)
+
+        self._seed = seed
         self.logger = default_log() if logger is None else logger
         self._verbose = verbose
 
@@ -48,8 +53,6 @@ class SiameseNeuralNetwork:
         self._batch_size = batch_size
         self._optimizer = optimizer
         self._optimizer_loss = optimizer_loss
-
-        self._seed = None
 
         self._dense_layer_size = dense_layer_size
         self._enable_batch_normalization = enable_batch_normalization
@@ -140,23 +143,15 @@ class SiameseNeuralNetwork:
 
     def _compile(self):
         """
-        Compile the model with an optimizer and callbacks such as learning rate decay
+        Compile the model with an optimizer
         :return: None
         """
-        def learning_rate_decay_callback(epoch, lr):
-            return tf.math.scalar_mul(0.99, lr)
-
-        callbacks = []
-
-        if self._enable_learning_rate_decay_scheduler:
-            callbacks.append(LearningRateScheduler(learning_rate_decay_callback))
-
         if self._optimizer == 'sgd':
-            opt = SGD(learning_rate=self._learning_rate, callbacks=callbacks, momentum=0.5)
+            opt = SGD(learning_rate=self._learning_rate, momentum=0.5)
         elif self._optimizer == 'adam':
-            opt = Adam(learning_rate=self._learning_rate, callbacks=callbacks)
+            opt = Adam(learning_rate=self._learning_rate)
         else:
-            opt = RMSprop(learning_rate=self._learning_rate, callbacks=callbacks)
+            opt = RMSprop(learning_rate=self._learning_rate)
 
         self.model.compile(optimizer=opt, loss=self._optimizer_loss)
 
@@ -185,19 +180,27 @@ class SiameseNeuralNetwork:
         self._trained = True
 
     def train(self,
-              train_ds,
-              val_ds,
+              X_train,
+              X_val,
               max_epoch_num: int = 200,
               patience: int = 20,
               seed: int = None):
         if self._trained:
             raise ValueError("Network was already trained")
 
+        def learning_rate_decay_callback(epoch, lr):
+            return lr * 0.99
+
         # handle seed
         if seed is not None:
             tf.random.set_seed(seed)
 
-        history = self.model.fit(train_ds, epochs=max_epoch_num, val_ds=val_ds, batch_size=128)
+        callbacks = []
+
+        if self._enable_learning_rate_decay_scheduler:
+            callbacks.append(LearningRateScheduler(learning_rate_decay_callback))
+
+        history = self.model.fit(X_train, epochs=max_epoch_num, validation_data=X_val, callbacks=callbacks)
 
         # for epoch in range(max_epoch_num):
         #     pass

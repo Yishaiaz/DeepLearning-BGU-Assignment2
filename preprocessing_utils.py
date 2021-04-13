@@ -1,11 +1,15 @@
 import os
 import random
-from typing import Tuple, List, Any
-import pandas as pd
-import numpy as np
-import tensorflow as tf
-import matplotlib.pyplot as plt
+from typing import Tuple, List
+
 import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+
+from utils import file_path
 
 
 def get_matching_non_matching_pairs(txt_file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, int]:
@@ -16,7 +20,7 @@ def get_matching_non_matching_pairs(txt_file_path: str) -> Tuple[pd.DataFrame, p
     The method assumes non-matching pairs lines are structured as <name1>\t<image_idx>\t<name2>\t<image_idx>
     returns data frame object for both types (converts the index to int)
     :param txt_file_path: str, the path to the txt file
-    :return: Tuple[matching pairs:pd.DataFrame, non-matching pairs: pd.DataFrame, int]
+    :return: Tuple[matching pairs:pd.DataFrame, non-matching pairs: pd.DataFrame, number of matching/non-matching pairs: int]
     """
     assert txt_file_path.endswith('.txt')
 
@@ -29,7 +33,7 @@ def get_matching_non_matching_pairs(txt_file_path: str) -> Tuple[pd.DataFrame, p
         # skip the first line
         single_line = pairs_file.readline()
         # iterate through samples
-        while single_line != '' and single_line != None:
+        while single_line != '' and single_line is not None:
             split_single_line = single_line.replace('\n', '').split('\t')
             assert len(split_single_line) == 3 or len(split_single_line) == 4
             # matching pairs - only 3 entries in line
@@ -75,7 +79,7 @@ def get_single_image(name: str,
     :param im_format: str, format of the image file
     :return: np.array, the image.
     """
-    assert im_format in ['jpg', 'png', 'jpeg']  # TODO why need format?
+    assert im_format in ['jpg', 'png', 'jpeg']
 
     image_name = '{name}_{id}.{format}'.format(name=name, id=str(image_idx).zfill(4), format=im_format)
     image_full_path = os.sep.join([images_root_path, name, image_name])
@@ -110,6 +114,7 @@ def load_images_as_vectors(matching_df: pd.DataFrame,
     all_images = []
     all_labels = []
     all_names = []
+
     # get all matching images
     label = 1
     for idx, row in matching_df.iterrows():
@@ -130,6 +135,7 @@ def load_images_as_vectors(matching_df: pd.DataFrame,
         second_person_image_idx = row[3]
         im1 = get_single_image(first_person_name, first_person_image_idx)
         im2 = get_single_image(second_person_name, second_person_image_idx)
+
         all_images.append((im1, im2))
         all_labels.append(label)
         all_names.append((first_person_name, second_person_name))
@@ -214,5 +220,152 @@ def create_nway_set(N: int,
         random_idx = int(random.random()*len(all_training_vectors))
 
 
-def test_nway_set(model, nway_test_set):
-    pass
+def load_images_as_tensors(img_pairs_by_indices: pd.DataFrame):
+    """
+    :param matching_df:
+    :param non_matching_df:
+    :return:
+    """
+
+    for idx, row in img_pairs_by_indices.iterrows():
+        if len(row) == 3:
+            person_name = row[0]
+            first_image_idx = row[1]
+            second_image_idx = row[2]
+
+            im1 = get_single_image(person_name, first_image_idx)
+            im2 = get_single_image(person_name, second_image_idx)
+        else:
+            first_person_name = row[0]
+            first_person_image_idx = row[1]
+            second_person_name = row[2]
+            second_person_image_idx = row[3]
+
+            im1 = get_single_image(first_person_name, first_person_image_idx)
+            im2 = get_single_image(second_person_name, second_person_image_idx)
+
+        yield tf.convert_to_tensor(im1), tf.convert_to_tensor(im2)
+
+
+    # for idx, row in img_pairs_by_indices.iterrows():
+    #     if len(row) == 3:
+    #         person_name = row[0]
+    #         first_image_idx = row[1]
+    #         second_image_idx = row[2]
+    #
+    #         im1 = get_single_image(person_name, first_image_idx)
+    #         im2 = get_single_image(person_name, second_image_idx)
+    #     else:
+    #         first_person_name = row[0]
+    #         first_person_image_idx = row[1]
+    #         second_person_name = row[2]
+    #         second_person_image_idx = row[3]
+    #
+    #         im1 = get_single_image(first_person_name, first_person_image_idx)
+    #         im2 = get_single_image(second_person_name, second_person_image_idx)
+    #
+    #     return tf.convert_to_tensor(im1), tf.convert_to_tensor(im2)
+
+def make_dataset(batch_size, seed, validation_split=0.2):
+    def parse_single_image(image_path: str,
+                           im_format: str = 'jpg') -> np.array:
+        """
+        Reads a single image file from the given images root directory.
+        the function assumes each image is within a directory by the name of the person.
+        the function assumes each image filename is <name>_####.<im_format>.
+        the funciton supports the following formats ['jpg', 'png', 'jpeg'] and
+        builds upon CV2.imread() method.
+        if needed, the function returns the flatten image np.array (default is not to flatten)
+
+        :param image_path: str, name of the person as it appears in the dataset
+        :param im_format: str, format of the image file
+        :return: np.array, the image.
+        """
+        assert im_format in ['jpg', 'png', 'jpeg']
+
+        image = tf.io.read_file(image_path)
+        image = tf.image.decode_jpeg(image, channels=1)
+
+        # convert unit8 tensor to floats in the [0,1] range
+        image = tf.image.convert_image_dtype(image, tf.float32)
+        image = tf.cast(image / 255., tf.float32)
+
+        return image
+
+    def load_images_paris_as_tensors(img_pairs):
+        """
+        :param img_pairs:
+        :return:
+        """
+        return parse_single_image(img_pairs[0]), parse_single_image(img_pairs[1])
+
+    def generate_image_name_path(image_root_path, name, idx):
+        return os.sep.join([image_root_path, name, f'{name}_{str(idx).zfill(4)}.jpg'])
+
+    def generate_matching_images_pairs_paths(image_pairs, image_root_path='lfw2Data/lfw2'):
+        return [(generate_image_name_path(image_root_path, row[0], row[1]), generate_image_name_path(image_root_path, row[0], row[2])) for row in list(image_pairs.itertuples(index=False, name=None))]
+
+    def generate_non_matching_images_pairs_paths(image_pairs, image_root_path='lfw2Data/lfw2'):
+        return [(generate_image_name_path(image_root_path, row[0], row[1]),
+                 generate_image_name_path(image_root_path, row[2], row[3])) for row in
+                list(image_pairs.itertuples(index=False, name=None))]
+
+    def configure_for_performance(ds, is_training=False):
+        if is_training:
+            ds = ds.shuffle(buffer_size=1000)
+        ds = ds.batch(batch_size)
+        ds = ds.cache()
+        ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+        return ds
+
+    # create train-validation datasets
+    train_pairs_file_path = "/lfw2Data/pairsDevTrain.txt"
+
+    train_matching_pairs, train_non_matching_pairs, number_of_pairs = get_matching_non_matching_pairs(file_path(train_pairs_file_path))
+
+    X_train_matching_pairs, X_val_matching_pairs, y_train_matching_pairs, y_val_matching_pairs = train_test_split(train_matching_pairs, np.ones(len(train_matching_pairs)), test_size=validation_split, shuffle=True, random_state=seed)
+    X_train_non_matching_pairs, X_val_non_matching_pairs, y_train_non_matching_pairs, y_val_non_matching_pairs = train_test_split(train_non_matching_pairs, np.zeros(len(train_non_matching_pairs)), test_size=validation_split, shuffle=True, random_state=seed)
+
+    y_train = np.concatenate([y_train_matching_pairs, y_train_non_matching_pairs])
+    y_val = np.concatenate([y_val_matching_pairs, y_val_non_matching_pairs])
+
+    train_matching_images_pairs_paths = generate_matching_images_pairs_paths(X_train_matching_pairs)
+    train_non_matching_images_pairs_paths = generate_non_matching_images_pairs_paths(X_train_non_matching_pairs)
+
+    train_matching_pairs_ds = tf.data.Dataset.from_tensor_slices(train_matching_images_pairs_paths + train_non_matching_images_pairs_paths)
+    train_ds = train_matching_pairs_ds.map(load_images_paris_as_tensors,
+                                           num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    y_train = tf.data.Dataset.from_tensor_slices(y_train)
+    train_ds = tf.data.Dataset.zip((train_ds, y_train))
+    train_ds = configure_for_performance(train_ds, is_training=True)
+
+    val_matching_images_pairs_paths = generate_matching_images_pairs_paths(X_val_matching_pairs)
+    val_non_matching_images_pairs_paths = generate_non_matching_images_pairs_paths(X_val_non_matching_pairs)
+
+    val_matching_pairs_ds = tf.data.Dataset.from_tensor_slices(val_matching_images_pairs_paths + val_non_matching_images_pairs_paths)
+    val_ds = val_matching_pairs_ds.map(load_images_paris_as_tensors,
+                                        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    y_val = tf.data.Dataset.from_tensor_slices(y_val)
+    val_ds = tf.data.Dataset.zip((val_ds, y_val))
+    val_ds = configure_for_performance(val_ds)
+
+    # create test dataset
+    test_pairs_file_path = "/lfw2Data/pairsDevTest.txt"
+    test_matching_pairs, test_non_matching_pairs, number_of_pairs = get_matching_non_matching_pairs(file_path(test_pairs_file_path))
+
+    y_test = np.concatenate([np.ones(number_of_pairs), np.zeros(number_of_pairs)])
+
+    test_matching_images_pairs_paths = generate_matching_images_pairs_paths(test_matching_pairs)
+    test_non_matching_images_pairs_paths = generate_non_matching_images_pairs_paths(test_non_matching_pairs)
+
+    test_matching_pairs_ds = tf.data.Dataset.from_tensor_slices(test_matching_images_pairs_paths + test_non_matching_images_pairs_paths)
+    test_ds = test_matching_pairs_ds.map(load_images_paris_as_tensors,
+                                         num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    y_test = tf.data.Dataset.from_tensor_slices(y_test)
+    test_ds = tf.data.Dataset.zip((test_ds, y_test))
+    test_ds = configure_for_performance(test_ds)
+
+    return train_ds, val_ds, test_ds
