@@ -1,15 +1,10 @@
 import os
-import random
-from typing import Tuple, List
+from typing import Tuple
 
-import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-
-from utils import file_path
 
 
 def get_matching_non_matching_pairs(txt_file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, int]:
@@ -55,9 +50,10 @@ def get_matching_non_matching_pairs(txt_file_path: str) -> Tuple[pd.DataFrame, p
 
 
 def make_dataset(images_directory: str,
-                batch_size: int = 32,
-                val_size: float = 0.2,
-                seed: int = 42):
+                 batch_size: int = 32,
+                 val_size: float = 0.2,
+                 augment_training_dataset: bool = False,
+                 seed: int = 42):
 
     def configure_for_performance(ds, batchsize: int, is_training=False):
         if is_training:
@@ -70,8 +66,8 @@ def make_dataset(images_directory: str,
     def read_image(image_path: str):
         image = tf.io.read_file(image_path)
         image = tf.image.decode_jpeg(image, channels=1)
+        image = tf.cast(image / 255, tf.float32)
         image = tf.image.convert_image_dtype(image, tf.float32)
-        image = tf.cast(image / 255., tf.float32)
 
         return image
 
@@ -127,17 +123,45 @@ def make_dataset(images_directory: str,
                                                                                                               shuffle=True,
                                                                                                               random_state=seed)
 
-        training_image_paths = np.vstack((X_matching_train[:32], X_non_matching_train[:32]))
-        training_labels = np.vstack((y_matching_train[:32], y_non_matching_train[:32]))
+        training_image_paths = np.vstack((X_matching_train, X_non_matching_train))
+        training_labels = np.vstack((y_matching_train, y_non_matching_train))
 
         val_image_paths = np.vstack((X_matching_val, X_non_matching_val))
         val_labels = np.vstack((y_matching_val, y_non_matching_val))
         return training_image_paths, training_labels, val_image_paths, val_labels
 
+    def generate_augmented_dataset(image_paths, augmentation_name, ds, labels_ds):
+        image_augmented_paths = []
+
+        for image_path in image_paths:
+            image_path1_splitted = image_path[0].split(os.path.sep)
+            image_path2_splitted = image_path[1].split(os.path.sep)
+            image_path1_augmented = os.sep.join(
+                ["lfw2Data/augmentations", augmentation_name, image_path1_splitted[-1]])
+            image_path2_augmented = os.sep.join(
+                ["lfw2Data/augmentations", augmentation_name, image_path2_splitted[-1]])
+            image_augmented_paths.append((image_path1_augmented, image_path2_augmented))
+
+        augmented_ds = tf.data.Dataset.from_tensor_slices(np.array(image_augmented_paths))
+        augmented_ds = augmented_ds.map(load_images_pairs_as_tensors, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+        return ds.concatenate(augmented_ds), labels_ds.concatenate(labels_ds)
+
     def turn_to_zipped_ds(image_paths, labels, is_training=False):
         ds = tf.data.Dataset.from_tensor_slices(image_paths)
         ds = ds.map(load_images_pairs_as_tensors, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        ds = tf.data.Dataset.zip((ds, tf.data.Dataset.from_tensor_slices(labels)))
+        labels_ds = tf.data.Dataset.from_tensor_slices(labels)
+
+        if augment_training_dataset and is_training:
+            ds, labels_ds = generate_augmented_dataset(image_paths, "noise", ds, labels_ds)
+            ds, labels_ds = generate_augmented_dataset(image_paths, "rotation45", ds, labels_ds)
+            ds, labels_ds = generate_augmented_dataset(image_paths, "center_crop", ds, labels_ds)
+            ds, labels_ds = generate_augmented_dataset(image_paths, "flip_left_right", ds, labels_ds)
+            ds, labels_ds = generate_augmented_dataset(image_paths, "noise_and_center_crop", ds, labels_ds)
+
+            ds = tf.data.Dataset.zip((ds, labels_ds))
+        else:
+            ds = tf.data.Dataset.zip((ds, tf.data.Dataset.from_tensor_slices(labels)))
         ds = configure_for_performance(ds, batchsize=batch_size, is_training=is_training)
         return ds
 

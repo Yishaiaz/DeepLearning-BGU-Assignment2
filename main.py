@@ -16,6 +16,7 @@ from utils import file_path, log
 seed = 0
 lfw_a_input_shape = (250, 250, 1)
 images_directory = 'lfw2Data/lfw2'
+augment_dataset = True
 
 # metrics
 metric_training_binary_accuracy = "Training binary accuracy"
@@ -53,14 +54,15 @@ def run(train_ds,
         experiment_num,
         experiment_name,
         current_time,
+        log_filename,
         input_shape,
         hparams,
         logger,
         patience: int = 20):
 
-    logger.info("\nRun experiment {}:\n{}\n".format(experiment_num, {h.name: hparams[h] for h in hparams}))
+    print("\nRun experiment {}:\n{}\n".format(experiment_num, {h.name: hparams[h] for h in hparams}))
 
-    tf_writer = tf.summary.create_file_writer(file_path("/tf-logs/") + f"hparam_tuning/{current_time}/{experiment_num}/{experiment_name}")
+    tf_writer = tf.summary.create_file_writer(file_path("/tf_logs/") + f"hparam_tuning/{current_time}/{experiment_name}")
 
     with tf_writer.as_default():
         # log hyper-parameters into tensorboard
@@ -70,14 +72,14 @@ def run(train_ds,
         siamese_network = SiameseNeuralNetwork(input_shape, batch_size=hparams[HP_BATCH_SIZE], seed=seed)
 
         # train on the given train/validation datasets
-        training_history = siamese_network.train(train_ds, val_ds, patience=patience, seed=seed, tf_writer=tf_writer)
+        training_history = siamese_network.train(train_ds, val_ds, log_filename, patience=patience, seed=seed, tf_writer=tf_writer)
 
         # extracts train/val statistics
-        epoch = len(training_history['loss'])
-        train_binary_accuracy = max(training_history['binary_accuracy'][-patience:])
-        validation_binary_accuracy = max(training_history['val_binary_accuracy'][-patience:])
-        train_loss = min(training_history['loss'][-patience:])
-        validation_loss = min(training_history['val_loss'][-patience:])
+        epoch = len(training_history.history['loss'])
+        train_binary_accuracy = max(training_history.history['binary_accuracy'][-patience:]) if len(training_history.history['binary_accuracy']) > patience else training_history.history['binary_accuracy'][-1]
+        validation_binary_accuracy = max(training_history.history['val_binary_accuracy'][-patience:]) if len(training_history.history['val_binary_accuracy']) > patience else training_history.history['val_binary_accuracy'][-1]
+        train_loss = min(training_history.history['loss'][-patience:] )if len(training_history.history['loss']) > patience else training_history.history['loss'][-1]
+        validation_loss = min(training_history.history['val_loss'][-patience:]) if len(training_history.history['val_loss']) > patience else training_history.history['val_loss'][-1]
 
         # evaluate on the test set
         test_loss, test_binary_accuracy = siamese_network.model.evaluate(test_ds)
@@ -86,6 +88,7 @@ def run(train_ds,
         logger.info("")
         logger.info("Summary:")
         logger.info("Training Epoch number [{}]".format(epoch))
+        logger.info("Final LR [{}]".format(training_history.history['lr']))
         logger.info("Training binary accuracy: [{}]".format(train_binary_accuracy))
         logger.info("Validation binary accuracy: [{}]".format(validation_binary_accuracy))
         logger.info("Test binary accuracy: [{}]".format(test_binary_accuracy))
@@ -158,6 +161,7 @@ def run_experiments():
                     # preprocessing and dataset creation
                     train_ds, val_ds, test_ds = make_dataset(images_directory=images_directory,
                                                              batch_size=batch_size,
+                                                             augment_training_dataset=augment_dataset,
                                                              seed=seed)
 
                     run(train_ds,
@@ -166,6 +170,7 @@ def run_experiments():
                         experiment_num,
                         experiment_name,
                         current_time,
+                        log_filename,
                         lfw_a_input_shape,
                         hparams,
                         logger)

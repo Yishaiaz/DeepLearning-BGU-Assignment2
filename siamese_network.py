@@ -5,7 +5,7 @@ from typing import Tuple, Callable
 import tensorflow as tf
 from tensorflow.keras import backend as keras_backend
 from tensorflow.python.keras import Input, Sequential, Model, regularizers
-from tensorflow.python.keras.callbacks import LearningRateScheduler, EarlyStopping
+from tensorflow.python.keras.callbacks import LearningRateScheduler, EarlyStopping, CSVLogger
 from tensorflow.python.keras.layers import Lambda, Dense, Conv2D, BatchNormalization, MaxPooling2D, Dropout, Flatten
 from tensorflow.python.keras.models import load_model
 from tensorflow.python.keras.optimizer_v2.adam import Adam
@@ -152,7 +152,7 @@ class SiameseNeuralNetwork:
         else:
             opt = RMSprop(learning_rate=self._learning_rate)
 
-        self.model.compile(optimizer=opt, loss=self._optimizer_loss)
+        self.model.compile(optimizer=opt, loss=self._optimizer_loss, metrics=[tf.keras.metrics.BinaryAccuracy()])
 
     def summary(self) -> None:
         """
@@ -181,6 +181,7 @@ class SiameseNeuralNetwork:
     def train(self,
               X_train,
               X_val,
+              log_name,
               max_epoch_num: int = 200,
               patience: int = 20,
               learning_rate_decay_callback: Callable[[int, float], float] = lambda epoch, lr: learning_rate_decay(epoch, lr),
@@ -198,7 +199,7 @@ class SiameseNeuralNetwork:
                                             patience=patience,
                                             verbose=1,
                                             restore_best_weights=True)
-        callbacks = [early_stop_callback]
+        callbacks = [early_stop_callback, CSVLogger(log_name)]
 
         if self._enable_learning_rate_decay_scheduler:
             callbacks.append(LearningRateScheduler(learning_rate_decay_callback))
