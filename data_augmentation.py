@@ -11,7 +11,7 @@ import tensorflow as tf
 
 pairs_file_path = 'lfw2Data/pairsDevTrain.txt'
 images_aumentation_directory = 'lfw2Data/augmentations'
-images_directory = 'lfw2Data/lfw2_new'
+images_directory = 'lfw2Data/lfw2'
 
 
 def noise(images):
