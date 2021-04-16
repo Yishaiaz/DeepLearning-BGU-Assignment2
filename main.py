@@ -23,14 +23,14 @@ metric_training_binary_accuracy = "Training binary accuracy"
 metric_validation_binary_accuracy = "Validation binary accuracy"
 metric_test_binary_accuracy = "Test binary accuracy"
 metric_training_loss = "Training loss"
-metric_validation_lossy = "Validation loss"
+metric_validation_loss = "Validation loss"
 metric_test_loss = "Test loss"
 metric_epoch_number = "# epochs"
 hparams_metrics = [hp.Metric(metric_training_binary_accuracy, display_name=metric_training_binary_accuracy),
                    hp.Metric(metric_validation_binary_accuracy, display_name=metric_validation_binary_accuracy),
                    hp.Metric(metric_test_binary_accuracy, display_name=metric_test_binary_accuracy),
                    hp.Metric(metric_training_loss, display_name=metric_training_loss),
-                   hp.Metric(metric_validation_lossy, display_name=metric_validation_lossy),
+                   hp.Metric(metric_validation_loss, display_name=metric_validation_loss),
                    hp.Metric(metric_test_loss, display_name=metric_test_loss),
                    hp.Metric(metric_epoch_number, display_name=metric_epoch_number)]
 
@@ -101,7 +101,7 @@ def run(train_ds,
         tf.summary.scalar(metric_validation_binary_accuracy, validation_binary_accuracy, step=experiment_num)
         tf.summary.scalar(metric_test_binary_accuracy, test_binary_accuracy, step=experiment_num)
         tf.summary.scalar(metric_training_loss, train_loss, step=experiment_num)
-        tf.summary.scalar(metric_validation_lossy, validation_loss, step=experiment_num)
+        tf.summary.scalar(metric_validation_loss, validation_loss, step=experiment_num)
         tf.summary.scalar(metric_test_loss, test_loss, step=experiment_num)
         tf.summary.scalar(metric_epoch_number, epoch, step=experiment_num)
 

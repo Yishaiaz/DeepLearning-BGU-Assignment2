@@ -80,11 +80,11 @@ class SiameseNeuralNetwork:
         second_twin_network = Input(input_shape)
 
         conv2D_kernel_initializer = self._conv2D_kernel_initializer if self._conv2D_kernel_initializer is not None else RandomNormal(
-            mean=0., stddev=10**-2)
+            mean=0., stddev=10e-2)
         dense_kernel_initializer = self._dense_kernel_initializer if self._dense_kernel_initializer is not None else RandomNormal(
-            mean=0., stddev=2 * (10**-1))
+            mean=0., stddev=2*10e-1)
         bias_initializer = self._bias_initializer if self._bias_initializer is not None else RandomNormal(mean=0.5,
-                                                                                                          stddev=10**-2)
+                                                                                                          stddev=10e-2)
 
         conv2d_layer = partial(Conv2D,
                                activation="relu",
