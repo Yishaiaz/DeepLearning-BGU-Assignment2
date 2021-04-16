@@ -33,5 +33,5 @@
 9. Data augmentation - choose which one to implement: rotation (45), crop, noise (Salt&Pepper), saturation, chain [Salt&Pepper, crop center]
 10. Transfer learning with ResNet.
 11. Bayse search (hyper params).
-12. EDA
+12. EDA - Yishaia
 13.
