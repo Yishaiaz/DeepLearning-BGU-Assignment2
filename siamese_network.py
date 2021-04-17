@@ -3,6 +3,7 @@ from logging import Logger
 from typing import Tuple, Callable
 
 import tensorflow as tf
+from kerastuner import HyperModel
 from tensorflow.keras import backend as keras_backend
 from tensorflow.python.keras import Input, Sequential, Model, regularizers
 from tensorflow.python.keras.callbacks import LearningRateScheduler, EarlyStopping, CSVLogger
@@ -13,7 +14,7 @@ from tensorflow.python.keras.optimizer_v2.gradient_descent import SGD
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
 from tensorflow.python.ops.init_ops_v2 import RandomNormal
 
-from utils import default_log, learning_rate_decay
+from utils import default_log, learning_rate_decay, OneShotLearningAccuracyTestCallback
 
 
 class SiameseNeuralNetwork:
@@ -24,10 +25,10 @@ class SiameseNeuralNetwork:
     def __init__(self,
                  input_shape: Tuple[int, int, int],
                  learning_rate: float = 0.01,
-                 batch_size: int = 64,
+                 batch_size: int = 32,
                  optimizer: str = 'sgd',
                  optimizer_loss: str = 'binary_crossentropy',
-                 dense_layer_size: int = 4096,
+                 dense_layer_size: int = 3,
                  enable_batch_normalization: bool = False,
                  l2_regularizer: float = None,
                  bias_initializer: str = None,
@@ -35,7 +36,7 @@ class SiameseNeuralNetwork:
                  dense_kernel_initializer: str = None,
                  distance_metric: str = None,
                  dropout_rate: float = None,
-                 enable_learning_rate_decay_scheduler: bool = True,
+                 enable_learning_rate_decay_scheduler: bool = False,
                  logger: Logger = None,
                  verbose: int = 0,
                  seed: int = None):
@@ -79,26 +80,29 @@ class SiameseNeuralNetwork:
         first_twin_network = Input(input_shape)
         second_twin_network = Input(input_shape)
 
-        conv2D_kernel_initializer = self._conv2D_kernel_initializer if self._conv2D_kernel_initializer is not None else RandomNormal(
-            mean=0., stddev=10e-2)
-        dense_kernel_initializer = self._dense_kernel_initializer if self._dense_kernel_initializer is not None else RandomNormal(
-            mean=0., stddev=2*10e-1)
-        bias_initializer = self._bias_initializer if self._bias_initializer is not None else RandomNormal(mean=0.5,
-                                                                                                          stddev=10e-2)
+        conv2D_kernel_initializer = self._conv2D_kernel_initializer
+        if self._conv2D_kernel_initializer is not None and self._conv2D_kernel_initializer == "default":
+            conv2D_kernel_initializer = RandomNormal(mean=0., stddev=10e-2)
+
+        dense_kernel_initializer = self._dense_kernel_initializer
+        if self._dense_kernel_initializer is not None and self._dense_kernel_initializer == "default":
+            dense_kernel_initializer = RandomNormal(mean=0., stddev=2*10e-1)
+
+        bias_initializer = self._bias_initializer
+        if self._bias_initializer is not None and self._bias_initializer == "default":
+            bias_initializer = RandomNormal(mean=0.5, stddev=10e-2)
 
         conv2d_layer = partial(Conv2D,
                                activation="relu",
                                kernel_initializer=conv2D_kernel_initializer,
                                bias_initializer=bias_initializer,
-                               kernel_regularizer=regularizers.l2(
-                                   self._l2_regularizer) if self._l2_regularizer is not None else None)
+                               kernel_regularizer=regularizers.l2(self._l2_regularizer) if self._l2_regularizer is not None else None)
 
         dense_layer = partial(Dense,
                               activation='sigmoid',
                               kernel_initializer=dense_kernel_initializer,
                               bias_initializer=bias_initializer,
-                              kernel_regularizer=regularizers.l2(
-                                  self._l2_regularizer) if self._l2_regularizer is not None else None)
+                              kernel_regularizer=regularizers.l2(self._l2_regularizer) if self._l2_regularizer is not None else None)
 
         def _construct_conv2d_layer(_model, filters, kernel_size):
             _model.add(conv2d_layer(filters, kernel_size))
@@ -109,10 +113,10 @@ class SiameseNeuralNetwork:
                 _model.add(Dropout(rate=self._dropout_rate))
 
         model = Sequential()
-        _construct_conv2d_layer(model, 64, (10, 10))
-        _construct_conv2d_layer(model, 128, (7, 7))
-        _construct_conv2d_layer(model, 128, (4, 4))
-        _construct_conv2d_layer(model, 256, (4, 4))
+        _construct_conv2d_layer(model, 8, (10, 10))
+        _construct_conv2d_layer(model, 8, (7, 7))
+        _construct_conv2d_layer(model, 8, (4, 4))
+        _construct_conv2d_layer(model, 8, (4, 4))
 
         model.add(Flatten())
 
@@ -152,7 +156,7 @@ class SiameseNeuralNetwork:
         else:
             opt = RMSprop(learning_rate=self._learning_rate)
 
-        self.model.compile(optimizer=opt, loss=self._optimizer_loss, metrics=[tf.keras.metrics.BinaryAccuracy()])
+        self.model.compile(optimizer=opt, loss=self._optimizer_loss, metrics=[tf.keras.metrics.BinaryAccuracy()], run_eagerly=True)
 
     def summary(self) -> None:
         """
@@ -179,14 +183,16 @@ class SiameseNeuralNetwork:
         self._trained = True
 
     def train(self,
-              X_train,
-              X_val,
+              train_ds,
+              val_ds,
+              one_shot_val_ds_list,
               log_name,
-              max_epoch_num: int = 200,
+              tf_writer,
+              tf_log_dir,
+              max_epoch_num: int = 50,
               patience: int = 20,
               learning_rate_decay_callback: Callable[[int, float], float] = lambda epoch, lr: learning_rate_decay(epoch, lr),
-              seed: int = None,
-              tf_writer=None):
+              seed: int = None):
         if self._trained:
             raise ValueError("Network was already trained")
 
@@ -194,43 +200,67 @@ class SiameseNeuralNetwork:
         if seed is not None:
             tf.random.set_seed(seed)
 
+        # configure tensorboard callback and writer
+        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=tf_log_dir)
+        tf_writer.set_as_default()
+
+        # configure early stopping callback
         early_stop_callback = EarlyStopping(monitor='val_binary_accuracy',
-                                            min_delta=0.01,
+                                            min_delta=1,
                                             patience=patience,
                                             verbose=1,
                                             restore_best_weights=True)
-        callbacks = [early_stop_callback, CSVLogger(log_name)]
+
+        # configure one shot learning accuracy test callback
+        one_shot_accuracy_test_callback = OneShotLearningAccuracyTestCallback(one_shot_val_ds_list)
+
+        callbacks = [early_stop_callback, CSVLogger(log_name), one_shot_accuracy_test_callback, tensorboard_callback]
 
         if self._enable_learning_rate_decay_scheduler:
             callbacks.append(LearningRateScheduler(learning_rate_decay_callback))
 
-        history = self.model.fit(X_train, epochs=max_epoch_num, validation_data=X_val, callbacks=callbacks)
+        history = self.model.fit(train_ds, epochs=max_epoch_num, validation_data=val_ds, callbacks=callbacks)
 
         self._trained = True
 
         return history
 
-    def test_n_way(self, dataset, num_tests: int, n: int = 20, is_validation: bool = False):
-        """
-        TODO
-        :param dataset:
-        :param n:
-        :param is_validation:
-        :return:
-        """
-        if not self._trained and not is_validation:
-            raise ValueError("Network wasn't trained")
 
-        num_correct = tf.constant(0)
+class SiameseNeuralNetworkHyperModel(HyperModel):
+    def __init__(self,
+                 input_shape,
+                 batch_size,
+                 seed: int = None):
+        self.input_shape = input_shape
+        self.batch_size = batch_size
+        self.seed = seed
 
-        for test_idx in range(num_tests):
-            # generate one-shot learning N-way accuracy test
-            input_pairs, labels = generate_n_way_oneshot_accuracy_tests(dataset)
+    def build(self, hp):
+        learning_rate = hp.get('learning_rate')
+        dense_layer_size = hp.get('dense_layer_size')
+        enable_batch_normalization = hp.get('enable_batch_normalization')
+        enable_l2_regularizer = hp.get('enable_l2_regularizer')
+        enable_dropout = hp.get('enable_dropout')
+        bias_initializer = hp.get('bias_initializer')
+        conv2D_kernel_initializer = hp.get('conv2D_kernel_initializer')
+        dense_kernel_initializer = hp.get('dense_kernel_initializer')
+        distance_metric = hp.get('distance_metric')
+        dropout_rate = hp.get('dropout_rate')
+        l2_regularizer = hp.get('l2_regularizer')
+        optimizer = hp.get('optimizer')
 
-            preds_tensor = self.model.predict(input_pairs)
-            preds_argmax_idx = tf.math.argmax(preds_tensor, axis=1)
+        siamese_network = SiameseNeuralNetwork(self.input_shape,
+                                               learning_rate=learning_rate,
+                                               batch_size=self.batch_size,
+                                               optimizer=optimizer,
+                                               dense_layer_size=dense_layer_size,
+                                               enable_batch_normalization=enable_batch_normalization,
+                                               l2_regularizer=l2_regularizer if enable_l2_regularizer else None,
+                                               bias_initializer=bias_initializer,
+                                               conv2D_kernel_initializer=conv2D_kernel_initializer,
+                                               dense_kernel_initializer=dense_kernel_initializer,
+                                               distance_metric=distance_metric,
+                                               dropout_rate=dropout_rate if enable_dropout else None,
+                                               seed=self.seed)
 
-            if tf.math.equal(preds_argmax_idx, tf.constant(0)):
-                num_correct += 1
-
-        return (num_correct/num_tests) * 100
+        return siamese_network.model

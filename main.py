@@ -10,7 +10,7 @@ from tensorboard.plugins.hparams import api as hp
 from config import HP_DENSE_UNITS_NUM, HP_BATCH_SIZE, HP_LEARNING_RATE, HP_OPTIMIZER
 from preprocessing_utils import make_dataset
 from siamese_network import SiameseNeuralNetwork
-from utils import file_path, log
+from utils import file_path, log, test_n_way
 
 # Global configuration
 seed = 0
@@ -51,6 +51,8 @@ np.random.seed(seed)
 def run(train_ds,
         val_ds,
         test_ds,
+        one_shot_val_ds_list,
+        one_shot_test_ds_list,
         experiment_num,
         experiment_name,
         current_time,
@@ -72,7 +74,7 @@ def run(train_ds,
         siamese_network = SiameseNeuralNetwork(input_shape, batch_size=hparams[HP_BATCH_SIZE], seed=seed)
 
         # train on the given train/validation datasets
-        training_history = siamese_network.train(train_ds, val_ds, log_filename, patience=patience, seed=seed, tf_writer=tf_writer)
+        training_history = siamese_network.train(train_ds, val_ds, one_shot_val_ds_list, log_filename, patience=patience, seed=seed, tf_writer=tf_writer, tf_log_dir=file_path("./tf_logs/"))
 
         # extracts train/val statistics
         epoch = len(training_history.history['loss'])
@@ -81,6 +83,9 @@ def run(train_ds,
         train_loss = min(training_history.history['loss'][-patience:] )if len(training_history.history['loss']) > patience else training_history.history['loss'][-1]
         validation_loss = min(training_history.history['val_loss'][-patience:]) if len(training_history.history['val_loss']) > patience else training_history.history['val_loss'][-1]
 
+        # check one shot learning
+        one_shot_test_accuracy_score = test_n_way(one_shot_test_ds_list, siamese_network.model)
+
         # evaluate on the test set
         test_loss, test_binary_accuracy = siamese_network.model.evaluate(test_ds)
 
@@ -88,13 +93,13 @@ def run(train_ds,
         logger.info("")
         logger.info("Summary:")
         logger.info("Training Epoch number [{}]".format(epoch))
-        logger.info("Final LR [{}]".format(training_history.history['lr']))
         logger.info("Training binary accuracy: [{}]".format(train_binary_accuracy))
         logger.info("Validation binary accuracy: [{}]".format(validation_binary_accuracy))
         logger.info("Test binary accuracy: [{}]".format(test_binary_accuracy))
         logger.info("Training loss: [{}]".format(train_loss))
         logger.info("Validation loss: [{}]".format(validation_loss))
         logger.info("Test loss: [{}]".format(test_loss))
+        logger.info("Test one shot accuracy: [{}]".format(one_shot_test_accuracy_score))
 
         # log into hparams tensorboard
         tf.summary.scalar(metric_training_binary_accuracy, train_binary_accuracy, step=experiment_num)
@@ -159,14 +164,17 @@ def run_experiments():
                     logger.info("#################################################################")
 
                     # preprocessing and dataset creation
-                    train_ds, val_ds, test_ds = make_dataset(images_directory=images_directory,
-                                                             batch_size=batch_size,
-                                                             augment_training_dataset=augment_dataset,
-                                                             seed=seed)
+                    train_ds, val_ds, test_ds, one_shot_val_ds_list, one_shot_test_ds_list = make_dataset(
+                        images_directory=images_directory,
+                        batch_size=batch_size,
+                        augment_training_dataset=augment_dataset,
+                        seed=seed)
 
                     run(train_ds,
                         val_ds,
                         test_ds,
+                        one_shot_val_ds_list,
+                        one_shot_test_ds_list,
                         experiment_num,
                         experiment_name,
                         current_time,

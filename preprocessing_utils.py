@@ -28,7 +28,7 @@ def get_matching_non_matching_pairs(txt_file_path: str) -> Tuple[pd.DataFrame, p
         # skip the first line
         single_line = pairs_file.readline()
         # iterate through samples
-        while single_line != '' and single_line != None:
+        while single_line != '' and single_line is not None:
             split_single_line = single_line.replace('\n', '').split('\t')
             assert len(split_single_line) == 3 or len(split_single_line) == 4
             # matching pairs - only 3 entries in line
@@ -53,13 +53,16 @@ def make_dataset(images_directory: str,
                  batch_size: int = 32,
                  val_size: float = 0.2,
                  augment_training_dataset: bool = False,
-                 seed: int = 42):
+                 n: int = 3,
+                 train_pairs_file_path: str = 'lfw2Data/pairsDevTrain.txt',
+                 test_pairs_file_path: str = 'lfw2Data/pairsDevTest.txt',
+                 seed: int = 0):
 
     def configure_for_performance(ds, batchsize: int, is_training=False):
+        ds = ds.cache()
         if is_training:
             ds = ds.shuffle(buffer_size=1000)
         ds = ds.batch(batchsize)
-        ds = ds.cache()
         ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
         return ds
 
@@ -84,7 +87,8 @@ def make_dataset(images_directory: str,
         return image_full_path
 
     def get_all_image_paths_in_df(df, main_dir) -> np.array:
-        images_paths = []
+        pairs_image_paths = {'name1': [], 'n1': [], 'name2': [], 'n2': []}
+
         for idx, row in df.iterrows():
             person1_name = row[0]
             first_image_idx = row[1]
@@ -94,41 +98,85 @@ def make_dataset(images_directory: str,
             im1_path = get_full_image_path(main_dir, person1_name, first_image_idx)
             im2_path = get_full_image_path(main_dir, person2_name, second_image_idx)
 
-            images_paths.append((im1_path, im2_path))
+            pairs_image_paths['name1'].append(person1_name)
+            pairs_image_paths['n1'].append(im1_path)
+            pairs_image_paths['name2'].append(person2_name)
+            pairs_image_paths['n2'].append(im2_path)
 
-        return np.array(images_paths)
+        return pd.DataFrame(pairs_image_paths)
 
-    def create_labels_vector(vector:np.array, label: int):
+    def create_labels_vector(vector: np.array, label: int):
         return np.zeros(len(vector)) + label
 
     def get_file_x_y(pairs_file_path):
         matching_df, non_matching_df, number_of_pairs = get_matching_non_matching_pairs(pairs_file_path)
-        matching_image_paths = get_all_image_paths_in_df(df=matching_df, main_dir=images_directory)
-        matching_images_labels = create_labels_vector(matching_image_paths, label=1).reshape(-1, 1)
-        non_matching_image_paths = get_all_image_paths_in_df(df=non_matching_df, main_dir=images_directory)
-        non_matching_images_labels = create_labels_vector(non_matching_image_paths, label=0).reshape(-1, 1)
+        matching_pairs_image_paths = get_all_image_paths_in_df(df=matching_df, main_dir=images_directory)
+        matching_images_labels = create_labels_vector(matching_pairs_image_paths, label=1).reshape(-1, 1)
+        non_matching_pairs_image_paths = get_all_image_paths_in_df(df=non_matching_df, main_dir=images_directory)
+        non_matching_images_labels = create_labels_vector(non_matching_pairs_image_paths, label=0).reshape(-1, 1)
 
-        return matching_image_paths, matching_images_labels, non_matching_image_paths, non_matching_images_labels
+        return matching_pairs_image_paths, matching_images_labels, non_matching_pairs_image_paths, non_matching_images_labels
 
-    def get_file_train_test_split(matching_image_paths, matching_images_labels, non_matching_image_paths, non_matching_images_labels):
+    def generate_one_shot_dataset(X_matching, X_non_matching):
+        one_shot_tests = []
+
+        for idx, row in X_matching.iterrows():
+            one_shot_test = []
+            person_name = row[0]
+            first_image_idx = row[1]
+            second_image_idx = row[3]
+
+            one_shot_test.append((first_image_idx, second_image_idx))
+
+            pairs_including_current_person_from_non_matching_df = X_non_matching.loc[(X_non_matching['name1'] == person_name) & (X_non_matching['name2'] == person_name)]
+
+            for idx_non_matching, row_non_matching in pairs_including_current_person_from_non_matching_df.iterrows():
+                one_shot_test.append((row_non_matching[1], row_non_matching[3]))
+
+            if len(one_shot_test) <= n:
+                pairs_not_including_current_person_from_non_matching_df = X_non_matching.loc[(X_non_matching['name1'] != person_name) & (X_non_matching['name2'] != person_name)]
+                non_matching_persons = set()
+
+                while len(one_shot_test) < n:
+                    sample_pair_not_including_current_person_from_non_matching_df = pairs_not_including_current_person_from_non_matching_df.sample(1)
+                    candidate1 = sample_pair_not_including_current_person_from_non_matching_df.iloc[0]['n1']
+                    candidate2 = sample_pair_not_including_current_person_from_non_matching_df.iloc[0]['n2']
+                    if candidate1 not in non_matching_persons:
+                        one_shot_test.append((first_image_idx, candidate1))
+                        non_matching_persons.add(candidate1)
+
+                    if len(one_shot_test) < n and candidate2 not in non_matching_persons:
+                        one_shot_test.append((first_image_idx, candidate2))
+                        non_matching_persons.add(candidate2)
+
+            one_shot_tests.append(np.array(one_shot_test))
+
+        return np.array(one_shot_tests)
+
+    def get_file_train_test_split(matching_pairs_image_paths, matching_images_labels, non_matching_pairs_image_paths, non_matching_images_labels):
         # matching
-        X_matching_train, X_matching_val, y_matching_train, y_matching_val = train_test_split(matching_image_paths, matching_images_labels,
+        X_matching_train, X_matching_val, y_matching_train, y_matching_val = train_test_split(matching_pairs_image_paths, matching_images_labels,
                                                                                               test_size=val_size,
                                                                                               shuffle=True,
                                                                                               random_state=seed)
 
         # non-matching
-        X_non_matching_train, X_non_matching_val, y_non_matching_train, y_non_matching_val = train_test_split(non_matching_image_paths, non_matching_images_labels,
+        X_non_matching_train, X_non_matching_val, y_non_matching_train, y_non_matching_val = train_test_split(non_matching_pairs_image_paths, non_matching_images_labels,
                                                                                                               test_size=val_size,
                                                                                                               shuffle=True,
                                                                                                               random_state=seed)
 
-        training_image_paths = np.vstack((X_matching_train, X_non_matching_train))
+        training_image_paths = np.vstack((X_matching_train[['n1', 'n2']].to_numpy(), X_non_matching_train[['n1', 'n2']].to_numpy()))
         training_labels = np.vstack((y_matching_train, y_non_matching_train))
 
-        val_image_paths = np.vstack((X_matching_val, X_non_matching_val))
+        # create verification validation set
+        val_image_paths = np.vstack((X_matching_val[['n1', 'n2']].to_numpy(), X_non_matching_val[['n1', 'n2']].to_numpy()))
         val_labels = np.vstack((y_matching_val, y_non_matching_val))
-        return training_image_paths, training_labels, val_image_paths, val_labels
+
+        # create one-shot validation set
+        validation_one_shot_tests = generate_one_shot_dataset(X_matching_val, X_non_matching_val)
+
+        return training_image_paths, training_labels, val_image_paths, val_labels, validation_one_shot_tests
 
     def generate_augmented_dataset(image_paths, augmentation_name, ds, labels_ds):
         image_augmented_paths = []
@@ -161,36 +209,55 @@ def make_dataset(images_directory: str,
 
             ds = tf.data.Dataset.zip((ds, labels_ds))
         else:
-            ds = tf.data.Dataset.zip((ds, tf.data.Dataset.from_tensor_slices(labels)))
+            ds = tf.data.Dataset.zip((ds, labels_ds))
         ds = configure_for_performance(ds, batchsize=batch_size, is_training=is_training)
         return ds
 
-    # train set
-    pairs_file_path = 'lfw2Data/pairsDevTrain.txt'
-    matching_image_paths, matching_images_labels, non_matching_image_paths, non_matching_images_labels = \
-        get_file_x_y(pairs_file_path)
+    def turn_to_zipped_one_shot_ds(one_shot_tests):
+        # create dataset per test configuration
+        one_shot_tests_ds = []
+        for one_shot_test in one_shot_tests:
+            ds = tf.data.Dataset.from_tensor_slices(one_shot_test)
+            ds = ds.map(load_images_pairs_as_tensors, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            ds = configure_for_performance(ds, batchsize=batch_size, is_training=False)
 
-    training_image_paths, training_labels, val_image_paths, val_labels = \
-        get_file_train_test_split(matching_image_paths,
+            labels = np.zeros(len(one_shot_test)).reshape(-1, 1)
+            labels[0][0] = 1
+
+            ds = tf.data.Dataset.zip((ds, tf.data.Dataset.from_tensor_slices(labels)))
+            one_shot_tests_ds.append(ds)
+
+        return one_shot_tests_ds
+
+    # train set
+    matching_pairs_image_paths, matching_images_labels, non_matching_pairs_image_paths, non_matching_images_labels = get_file_x_y(train_pairs_file_path)
+
+    training_image_paths, training_labels, val_image_paths, val_labels, validation_one_shot_tests = \
+        get_file_train_test_split(matching_pairs_image_paths,
                                   matching_images_labels,
-                                  non_matching_image_paths,
+                                  non_matching_pairs_image_paths,
                                   non_matching_images_labels)
 
     training_ds = turn_to_zipped_ds(training_image_paths, training_labels, is_training=True)
 
     val_ds = turn_to_zipped_ds(val_image_paths, val_labels)
 
+    one_shot_val_ds_list = turn_to_zipped_one_shot_ds(validation_one_shot_tests)
+
     # test set
-    pairs_file_path = 'lfw2Data/pairsDevTest.txt'
-    matching_image_paths, matching_images_labels, non_matching_image_paths, non_matching_images_labels = \
-        get_file_x_y(pairs_file_path)
+    matching_pairs_image_paths, matching_images_labels, non_matching_pairs_image_paths, non_matching_images_labels = \
+        get_file_x_y(test_pairs_file_path)
     # we don't mind not shuffling as this is the test
-    test_image_paths = np.vstack((matching_image_paths, non_matching_image_paths))
+    test_image_paths = np.vstack((matching_pairs_image_paths[['n1', 'n2']].to_numpy(), non_matching_pairs_image_paths[['n1', 'n2']].to_numpy()))
     test_labels = np.vstack((matching_images_labels, non_matching_images_labels))
 
     test_ds = turn_to_zipped_ds(test_image_paths, test_labels)
 
-    return training_ds, val_ds, test_ds
+    # create one-shot test set
+    test_one_shot_tests = generate_one_shot_dataset(matching_pairs_image_paths, non_matching_pairs_image_paths)
+    one_shot_test_ds_list = turn_to_zipped_one_shot_ds(test_one_shot_tests)
+
+    return training_ds, val_ds, test_ds, one_shot_val_ds_list, one_shot_test_ds_list
 
 def generate_n_way_oneshot_accuracy_test(dataset: tf.data.Dataset,
                                          name_to_idxs_in_val: dict,
@@ -327,4 +394,3 @@ def generate_n_way_oneshot_accuracy_test(dataset: tf.data.Dataset,
                           tf.data.Dataset.from_tensor_slices(np.array(labels))
 
     return input_pairs, labels
-

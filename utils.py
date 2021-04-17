@@ -1,7 +1,9 @@
 import logging
 import os
-import tensorflow as tf
 
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
 
 """Utilities methods"""
 
@@ -68,3 +70,45 @@ def tf_log_list(writer, name, values, steps):
 
 def learning_rate_decay(epoch, lr):
     return lr * 0.99
+
+
+def test_n_way(one_shot_tests, model):
+    """
+    TODO
+    :param ds_list:
+    :param model:
+    :return:
+    """
+    num_tests = len(one_shot_tests)
+    num_correct = 0
+
+    for one_shot_test in one_shot_tests:
+        preds_tensor = model.predict(one_shot_test)
+
+        preds_argmax_idx = np.argmax(preds_tensor)
+
+        if preds_argmax_idx == 0:
+            num_correct += 1
+
+    return num_correct/num_tests
+
+
+class OneShotLearningAccuracyTestCallback(Callback):
+
+    def __init__(self, val_ds_list):
+        super(OneShotLearningAccuracyTestCallback, self).__init__()
+
+        self.val_ds_list = val_ds_list
+
+    def on_epoch_end(self, epoch, logs={}):
+        # perform one-shot learning accuracy test
+        oneshot_accuracy_score = test_n_way(self.val_ds_list, self.model)
+
+        print(f"one_shot_accuracy: {oneshot_accuracy_score}")
+
+        tf.summary.scalar('one_shot_accuracy', data=oneshot_accuracy_score, step=epoch)
+
+        return oneshot_accuracy_score
+
+    def __deepcopy__(self, memo):
+        return OneShotLearningAccuracyTestCallback(self.val_ds_list)
