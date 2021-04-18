@@ -28,11 +28,11 @@ def main():
 
     # configuration
     seed = 0
-    lfw_a_input_shape = (250, 250, 1)
-    images_directory = "/content/lfwaData/lfw2/lfw2"
+    lfw_a_input_shape = (150, 150, 1)
+    images_directory = "./lfw2Data/lfw2/"
     augment_dataset = False
     project_name = "batch_32_without_data_augmentation"
-    drive_prefix = "/content/drive/MyDrive/BGU/Deep Learning/HW2/"
+    drive_prefix = "./"
     directory = drive_prefix + "/tuner_results"
     tf_log_dir = drive_prefix + "/tf_logs/tuner/" + project_name
     csv_file_name = directory + "/" + project_name + "/" + project_name + ".csv"
@@ -40,11 +40,11 @@ def main():
     run_bayes_search = True
 
     batch_size = 64
-    max_trials = 80
-    num_models = 5
-    epochs = 40
-    patience = 5
-    min_delta = 1
+    max_trials = 150
+    num_models = 10
+    epochs = 50
+    patience = 10
+    min_delta = 0.2
 
     tf.random.set_seed(seed)
     np.random.seed(seed)
@@ -69,6 +69,7 @@ def main():
         # preprocessing and dataset creation
         train_ds, val_ds, test_ds, one_shot_val_ds_list, one_shot_test_ds_list = make_dataset(
             images_directory=images_directory,
+            resize_dim=lfw_a_input_shape,
             batch_size=batch_size,
             augment_training_dataset=augment_dataset,
             seed=seed)
