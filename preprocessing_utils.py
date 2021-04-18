@@ -138,7 +138,7 @@ def make_dataset(images_directory: str,
                 non_matching_persons = set()
 
                 while len(one_shot_test) < n:
-                    sample_pair_not_including_current_person_from_non_matching_df = pairs_not_including_current_person_from_non_matching_df.sample(1)
+                    sample_pair_not_including_current_person_from_non_matching_df = pairs_not_including_current_person_from_non_matching_df.sample(1, random_state=seed)
                     candidate1 = sample_pair_not_including_current_person_from_non_matching_df.iloc[0]['n1']
                     candidate2 = sample_pair_not_including_current_person_from_non_matching_df.iloc[0]['n2']
                     if candidate1 not in non_matching_persons:

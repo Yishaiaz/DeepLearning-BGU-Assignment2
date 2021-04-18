@@ -28,7 +28,7 @@ class SiameseNeuralNetwork:
                  batch_size: int = 32,
                  optimizer: str = 'sgd',
                  optimizer_loss: str = 'binary_crossentropy',
-                 dense_layer_size: int = 3,
+                 dense_layer_size: int = 4096,
                  enable_batch_normalization: bool = False,
                  l2_regularizer: float = None,
                  bias_initializer: str = None,
@@ -113,10 +113,10 @@ class SiameseNeuralNetwork:
                 _model.add(Dropout(rate=self._dropout_rate))
 
         model = Sequential()
-        _construct_conv2d_layer(model, 8, (10, 10))
-        _construct_conv2d_layer(model, 8, (7, 7))
-        _construct_conv2d_layer(model, 8, (4, 4))
-        _construct_conv2d_layer(model, 8, (4, 4))
+        _construct_conv2d_layer(model, 64, (10, 10))
+        _construct_conv2d_layer(model, 128, (7, 7))
+        _construct_conv2d_layer(model, 128, (4, 4))
+        _construct_conv2d_layer(model, 256, (4, 4))
 
         model.add(Flatten())
 
@@ -156,7 +156,7 @@ class SiameseNeuralNetwork:
         else:
             opt = RMSprop(learning_rate=self._learning_rate)
 
-        self.model.compile(optimizer=opt, loss=self._optimizer_loss, metrics=[tf.keras.metrics.BinaryAccuracy()], run_eagerly=True)
+        self.model.compile(optimizer=opt, loss=self._optimizer_loss, metrics=[tf.keras.metrics.BinaryAccuracy()], run_eagerly=False)
 
     def summary(self) -> None:
         """
@@ -239,8 +239,6 @@ class SiameseNeuralNetworkHyperModel(HyperModel):
         learning_rate = hp.get('learning_rate')
         dense_layer_size = hp.get('dense_layer_size')
         enable_batch_normalization = hp.get('enable_batch_normalization')
-        enable_l2_regularizer = hp.get('enable_l2_regularizer')
-        enable_dropout = hp.get('enable_dropout')
         bias_initializer = hp.get('bias_initializer')
         conv2D_kernel_initializer = hp.get('conv2D_kernel_initializer')
         dense_kernel_initializer = hp.get('dense_kernel_initializer')
@@ -255,12 +253,12 @@ class SiameseNeuralNetworkHyperModel(HyperModel):
                                                optimizer=optimizer,
                                                dense_layer_size=dense_layer_size,
                                                enable_batch_normalization=enable_batch_normalization,
-                                               l2_regularizer=l2_regularizer if enable_l2_regularizer else None,
+                                               l2_regularizer=l2_regularizer if l2_regularizer != -1.0 else None,
                                                bias_initializer=bias_initializer,
                                                conv2D_kernel_initializer=conv2D_kernel_initializer,
                                                dense_kernel_initializer=dense_kernel_initializer,
                                                distance_metric=distance_metric,
-                                               dropout_rate=dropout_rate if enable_dropout else None,
+                                               dropout_rate=dropout_rate if dropout_rate != 0.0 else None,
                                                seed=self.seed)
 
         return siamese_network.model
