@@ -24,16 +24,19 @@ hp.Choice('optimizer', ["adam", "sgd", "RMSprop"])
 
 
 def main():
+    global hp
+    
     # configuration
     seed = 0
     mobilenet_input_shape = (224, 224, 3)
     images_directory = "./lfw2Data/lfw2/"
-    augment_dataset = False
     project_name = "batch_32_without_data_augmentation"
     drive_prefix = "./"
     directory = drive_prefix + "/tuner_results"
     tf_log_dir = drive_prefix + "/tf_logs/tuner/" + project_name
     csv_file_name = directory + "/" + project_name + "/" + project_name + ".csv"
+
+    augment_dataset = False
     overwrite = False
     run_bayes_search = False
     use_transfer_learning_architecture = True
