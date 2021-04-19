@@ -134,7 +134,6 @@ class SiameseNeuralNetwork:
 
             x = GlobalAveragePooling2D()(mobilenet_model.output)
             x = dense_layer(self._dense_layer_size)(x)
-            x = dense_layer(self._dense_layer_size)(x)
             model = Model(inputs=mobilenet_model.input, outputs=x)
 
         first_embedding = model(first_twin_network)
