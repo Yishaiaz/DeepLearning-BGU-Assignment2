@@ -43,8 +43,8 @@ def main():
     max_trials = 150
     num_models = 10
     epochs = 50
-    patience = 10
-    min_delta = 0.2
+    patience = 15
+    min_delta = 0.03
 
     tf.random.set_seed(seed)
     np.random.seed(seed)
@@ -82,6 +82,7 @@ def main():
             allow_new_entries=False,
             objective='val_binary_accuracy',
             seed=seed,
+            num_initial_points=3,
             directory=directory,
             project_name=project_name,
             overwrite=overwrite)

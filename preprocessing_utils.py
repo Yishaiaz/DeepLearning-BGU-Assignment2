@@ -70,7 +70,8 @@ def make_dataset(images_directory: str,
     def read_image(image_path: str):
         image = tf.io.read_file(image_path)
         image = tf.image.decode_jpeg(image, channels=1)
-        image = tf.image.resize(image, [resize_dim[0], resize_dim[1]])
+        if resize_dim[0] != 250:
+            image = tf.image.resize(image, [resize_dim[0], resize_dim[1]])
         image = tf.cast(image / 255, tf.float32)
         image = tf.image.convert_image_dtype(image, tf.float32)
 
