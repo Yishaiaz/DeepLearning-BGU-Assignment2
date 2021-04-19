@@ -11,8 +11,8 @@ from utils import file_path, test_n_way, OneShotLearningAccuracyTestCallback
 
 
 hp = HyperParameters()
-hp.Choice('learning_rate', [1e-2, 1e-3, 5e-4, 1e-4, 5e-5, 1e-5])
-hp.Choice('dense_layer_size', [256, 512, 4096])
+hp.Choice('learning_rate', [5e-5, 1e-5, 5e-4, 1e-4, 1e-3, 5e-6])
+hp.Choice('dense_layer_size', [1028, 4096, 512])
 hp.Choice('enable_batch_normalization', [True, False])
 hp.Choice('bias_initializer', ["default", "zeros"])
 hp.Choice('conv2D_kernel_initializer', ["default", "he_normal"])
@@ -24,11 +24,9 @@ hp.Choice('optimizer', ["adam", "sgd", "RMSprop"])
 
 
 def main():
-    global hp
-
     # configuration
     seed = 0
-    lfw_a_input_shape = (150, 150, 1)
+    mobilenet_input_shape = (224, 224, 3)
     images_directory = "./lfw2Data/lfw2/"
     augment_dataset = False
     project_name = "batch_32_without_data_augmentation"
@@ -37,7 +35,11 @@ def main():
     tf_log_dir = drive_prefix + "/tf_logs/tuner/" + project_name
     csv_file_name = directory + "/" + project_name + "/" + project_name + ".csv"
     overwrite = False
-    run_bayes_search = True
+    run_bayes_search = False
+    use_transfer_learning_architecture = True
+    image_resize = False
+    lfw_a_input_shape = (150, 150, 1) if image_resize else (250, 250, 1)
+    input_shape = mobilenet_input_shape if use_transfer_learning_architecture else lfw_a_input_shape
 
     batch_size = 64
     max_trials = 150
@@ -51,15 +53,15 @@ def main():
 
     if not run_bayes_search:
         hp = HyperParameters()
-        hp.Fixed('learning_rate', 0.1)
+        hp.Fixed('learning_rate', 0.00001)
         hp.Fixed('dense_layer_size', 1024)
         hp.Fixed('enable_batch_normalization', False)
-        hp.Fixed('bias_initializer', "default")
+        hp.Fixed('bias_initializer', "zeros")
         hp.Fixed('conv2D_kernel_initializer', "he_normal")
         hp.Fixed('dense_kernel_initializer',  "he_normal")
-        hp.Fixed('dropout_rate', 0.7)
-        hp.Fixed('distance_metric', "euclidean_distance")
-        hp.Fixed('l2_regularizer', 0.9)
+        hp.Fixed('dropout_rate', 0.0)
+        hp.Fixed('distance_metric', "abs")
+        hp.Fixed('l2_regularizer', -1)
         hp.Fixed('optimizer', "rmsprop")
         max_trials = 1
         num_models = 1
@@ -69,14 +71,18 @@ def main():
         # preprocessing and dataset creation
         train_ds, val_ds, test_ds, one_shot_val_ds_list, one_shot_test_ds_list = make_dataset(
             images_directory=images_directory,
-            resize_dim=lfw_a_input_shape,
+            resize_dim=input_shape,
             batch_size=batch_size,
             augment_training_dataset=augment_dataset,
+            use_transfer_learning_architecture=use_transfer_learning_architecture,
             seed=seed)
 
         # configure bayesian optimization tuner
         tuner = BayesianOptimization(
-            SiameseNeuralNetworkHyperModel(input_shape=lfw_a_input_shape, batch_size=batch_size, seed=seed),
+            SiameseNeuralNetworkHyperModel(input_shape=input_shape,
+                                           batch_size=batch_size,
+                                           use_transfer_learning_architecture=use_transfer_learning_architecture,
+                                           seed=seed),
             max_trials=max_trials,
             hyperparameters=hp,
             allow_new_entries=False,
@@ -110,7 +116,8 @@ def main():
         tuner.search(train_ds,
                      epochs=epochs,
                      validation_data=val_ds,
-                     callbacks=[tensorboard_callback, one_shot_accuracy_test_callback, early_stop_callback])
+                     callbacks=[tensorboard_callback, early_stop_callback] if run_bayes_search else [tensorboard_callback, one_shot_accuracy_test_callback, early_stop_callback],
+                     verbose=2)
 
         print()
         tuner.results_summary(num_models)
@@ -120,17 +127,17 @@ def main():
         best_trials_results = []
         for idx, model in enumerate(tuner.get_best_models(num_models=num_models)):
             # evaluate on the test set
-            loss, accuracy = model.evaluate(test_ds)
+            loss, accuracy = model.evaluate(test_ds, verbose=2)
             # check one shot learning on test set
             test_one_shot_accuracy_score = test_n_way(one_shot_test_ds_list, model)
 
             # evaluate on the validation set
-            val_loss, val_accuracy = model.evaluate(val_ds)
+            val_loss, val_accuracy = model.evaluate(val_ds, verbose=2)
             # check one shot learning on val set
             val_one_shot_accuracy_score = test_n_way(one_shot_val_ds_list, model)
 
             # evaluate on the train set
-            train_loss, train_accuracy = model.evaluate(train_ds)
+            train_loss, train_accuracy = model.evaluate(train_ds, verbose=2)
 
             hyperparameters = best_trials[idx].hyperparameters.values
 

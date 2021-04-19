@@ -54,6 +54,7 @@ def make_dataset(images_directory: str,
                  batch_size: int = 32,
                  val_size: float = 0.2,
                  augment_training_dataset: bool = False,
+                 use_transfer_learning_architecture: bool = False,
                  n: int = 3,
                  train_pairs_file_path: str = 'lfw2Data/pairsDevTrain.txt',
                  test_pairs_file_path: str = 'lfw2Data/pairsDevTest.txt',
@@ -69,7 +70,7 @@ def make_dataset(images_directory: str,
 
     def read_image(image_path: str):
         image = tf.io.read_file(image_path)
-        image = tf.image.decode_jpeg(image, channels=1)
+        image = tf.image.decode_jpeg(image, channels=3 if use_transfer_learning_architecture else 1)
         if resize_dim[0] != 250:
             image = tf.image.resize(image, [resize_dim[0], resize_dim[1]])
         image = tf.cast(image / 255, tf.float32)
@@ -262,6 +263,7 @@ def make_dataset(images_directory: str,
 
     return training_ds, val_ds, test_ds, one_shot_val_ds_list, one_shot_test_ds_list
 
+# TODO remove
 def generate_n_way_oneshot_accuracy_test(dataset: tf.data.Dataset,
                                          name_to_idxs_in_val: dict,
                                          trained_sets: dict,
