@@ -34,28 +34,6 @@ def noise_and_center_crop(images):
     return center_crop(noise(images))
 
 
-# TODO remove before submission
-# def augment_dataset(dataset: tf.data.Dataset, seed) -> tf.data.Dataset:
-#     random.seed(seed)
-#
-#     noise_wrapper = lambda x, y: tf.py_function(noise, [x, y], [tf.Tensor, tf.Tensor])
-#     rotation45_wrapper = lambda x, y: tf.py_function(rotation45, [x, y], [tf.Tensor, tf.Tensor])
-#
-#     #noise_dataset = dataset.map(noise_wrapper)
-#     #rotation45_dataset = dataset.map(rotation45_wrapper)
-#     center_crop_dataset = dataset.map(center_crop)
-#     flip_left_right_dataset = dataset.map(flip_left_right)
-#     #noise_and_center_crop_dataset = dataset.map(noise_and_center_crop)
-#
-#     #augmented_dataset = dataset.concatenate(noise_dataset)
-#     #augmented_dataset = augmented_dataset.concatenate(rotation45_dataset)
-#     augmented_dataset = dataset.concatenate(center_crop_dataset)
-#     augmented_dataset = augmented_dataset.concatenate(flip_left_right_dataset)
-#     #augmented_dataset = augmented_dataset.concatenate(noise_and_center_crop_dataset)
-#
-#     return augmented_dataset
-
-
 def read_image(image_path: str):
     image = tf.io.read_file(image_path)
     image = tf.image.decode_jpeg(image, channels=1)

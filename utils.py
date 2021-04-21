@@ -69,7 +69,7 @@ def tf_log_list(writer, name, values, steps):
 
 
 def learning_rate_decay(epoch, lr):
-    return lr * 0.99
+    return lr * 0.97
 
 
 def test_n_way(one_shot_tests, model):

@@ -7,7 +7,8 @@ from kerastuner import HyperModel
 from tensorflow.keras import backend as keras_backend
 from tensorflow.python.keras import Input, Sequential, Model, regularizers
 from tensorflow.python.keras.callbacks import LearningRateScheduler, EarlyStopping, CSVLogger
-from tensorflow.python.keras.layers import Lambda, Dense, Conv2D, BatchNormalization, MaxPooling2D, Dropout, Flatten
+from tensorflow.python.keras.layers import Lambda, Dense, Conv2D, BatchNormalization, MaxPooling2D, Dropout, Flatten, \
+    GlobalAveragePooling2D
 from tensorflow.python.keras.models import load_model
 from tensorflow.python.keras.optimizer_v2.adam import Adam
 from tensorflow.python.keras.optimizer_v2.gradient_descent import SGD
@@ -37,6 +38,7 @@ class SiameseNeuralNetwork:
                  distance_metric: str = None,
                  dropout_rate: float = None,
                  enable_learning_rate_decay_scheduler: bool = False,
+                 use_transfer_learning_architecture: bool = False,
                  logger: Logger = None,
                  verbose: int = 0,
                  seed: int = None):
@@ -63,6 +65,7 @@ class SiameseNeuralNetwork:
         self._distance_metric = distance_metric
         self._dropout_rate = dropout_rate
         self._enable_learning_rate_decay_scheduler = enable_learning_rate_decay_scheduler
+        self._use_transfer_learning_architecture = use_transfer_learning_architecture
 
         # build model and compile
         self.model = self._build_model()
@@ -112,15 +115,26 @@ class SiameseNeuralNetwork:
             if self._dropout_rate is not None:
                 _model.add(Dropout(rate=self._dropout_rate))
 
-        model = Sequential()
-        _construct_conv2d_layer(model, 64, (10, 10))
-        _construct_conv2d_layer(model, 128, (7, 7))
-        _construct_conv2d_layer(model, 128, (4, 4))
-        _construct_conv2d_layer(model, 256, (4, 4))
+        if not self._use_transfer_learning_architecture:
+            model = Sequential()
+            _construct_conv2d_layer(model, 64, (10, 10))
+            _construct_conv2d_layer(model, 128, (7, 7))
+            _construct_conv2d_layer(model, 128, (4, 4))
+            _construct_conv2d_layer(model, 256, (4, 4))
 
-        model.add(Flatten())
+            model.add(Flatten())
+            model.add(dense_layer(self._dense_layer_size))
+        else:
+            mobilenet_model = tf.keras.applications.MobileNet(input_shape=(input_shape[0], input_shape[1], 3),
+                                                              include_top=False,
+                                                              weights='imagenet')
+            mobilenet_model.trainable = False
+            for i, layer in enumerate(mobilenet_model.layers):
+                layer.trainable = False
 
-        model.add(dense_layer(self._dense_layer_size))
+            x = GlobalAveragePooling2D()(mobilenet_model.output)
+            x = dense_layer(self._dense_layer_size)(x)
+            model = Model(inputs=mobilenet_model.input, outputs=x)
 
         first_embedding = model(first_twin_network)
         second_embedding = model(second_twin_network)
@@ -190,7 +204,7 @@ class SiameseNeuralNetwork:
               tf_writer,
               tf_log_dir,
               max_epoch_num: int = 50,
-              patience: int = 20,
+              patience: int = 15,
               learning_rate_decay_callback: Callable[[int, float], float] = lambda epoch, lr: learning_rate_decay(epoch, lr),
               seed: int = None):
         if self._trained:
@@ -206,7 +220,7 @@ class SiameseNeuralNetwork:
 
         # configure early stopping callback
         early_stop_callback = EarlyStopping(monitor='val_binary_accuracy',
-                                            min_delta=1,
+                                            min_delta=0.03,
                                             patience=patience,
                                             verbose=1,
                                             restore_best_weights=True)
@@ -230,9 +244,11 @@ class SiameseNeuralNetworkHyperModel(HyperModel):
     def __init__(self,
                  input_shape,
                  batch_size,
+                 use_transfer_learning_architecture,
                  seed: int = None):
         self.input_shape = input_shape
         self.batch_size = batch_size
+        self.use_transfer_learning_architecture = use_transfer_learning_architecture
         self.seed = seed
 
     def build(self, hp):
@@ -259,6 +275,7 @@ class SiameseNeuralNetworkHyperModel(HyperModel):
                                                dense_kernel_initializer=dense_kernel_initializer,
                                                distance_metric=distance_metric,
                                                dropout_rate=dropout_rate if dropout_rate != 0.0 else None,
+                                               use_transfer_learning_architecture=self.use_transfer_learning_architecture,
                                                seed=self.seed)
 
         return siamese_network.model
