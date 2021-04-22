@@ -207,6 +207,8 @@ class SiameseNeuralNetwork:
               patience: int = 15,
               learning_rate_decay_callback: Callable[[int, float], float] = lambda epoch, lr: learning_rate_decay(epoch, lr),
               seed: int = None):
+        """Wrapper function for training the model"""
+
         if self._trained:
             raise ValueError("Network was already trained")
 
@@ -241,6 +243,10 @@ class SiameseNeuralNetwork:
 
 
 class SiameseNeuralNetworkHyperModel(HyperModel):
+    """
+    This class inherits from HyperModel which defines a searchable space of Models and builds Models from this space.
+    Namely, this wrapper class allows us to utilize our Siamese neural network implementation in keras-tuner framework.
+    """
     def __init__(self,
                  input_shape,
                  batch_size,

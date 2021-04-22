@@ -74,10 +74,8 @@ def learning_rate_decay(epoch, lr):
 
 def test_n_way(one_shot_tests, model):
     """
-    TODO
-    :param ds_list:
-    :param model:
-    :return:
+    Performs n-way test based on the given image pairs.
+    Note: assume that the first pair is positive
     """
     num_tests = len(one_shot_tests)
     num_correct = 0
