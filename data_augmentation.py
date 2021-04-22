@@ -118,6 +118,10 @@ def apply_transformation_and_save(images_path, augmentation_name, image1, image2
 
 
 def generate_augmentation():
+    """
+    Generate one time per image in the training dataset noise, rotation45, center_crop, flip_left_right and
+    noise and center crop transformations and saves the new images into relevant directories.
+    """
     matching_df, non_matching_df, number_of_pairs = get_matching_non_matching_pairs(pairs_file_path)
     matching_image_paths = get_all_image_paths_in_df(df=matching_df, main_dir=images_directory)
     non_matching_image_paths = get_all_image_paths_in_df(df=non_matching_df, main_dir=images_directory)
@@ -146,50 +150,3 @@ def generate_augmentation():
 
 if __name__ == "__main__":
     generate_augmentation()
-
-# TODO remove before submission
-# image_path_1 = file_path("lfw2Data/lfw2/Aaron_Eckhart/Aaron_Eckhart_0001.jpg")
-# image_1 = read_image(image_path_1)
-#
-# image_path_2 = file_path("lfw2Data/lfw2/Abba_Eban/Abba_Eban_0001.jpg")
-# image_2 = read_image(image_path_2)
-#
-# seed = 45
-# random.seed(seed)
-#
-# images = (image_1, image_2)
-#
-# images1 = tf.image.flip_left_right(images)
-# plt.subplot(2,1,1)
-# plt.imshow(images1[0])
-# plt.subplot(2,1,2)
-# plt.imshow(images1[1])
-# plt.show()
-#
-# images2 = center_crop(images)
-# plt.subplot(2,1,1)
-# plt.imshow(images2[0])
-# plt.subplot(2,1,2)
-# plt.imshow(images2[1])
-# plt.show()
-#
-# images3 = noise_and_center_crop(images, seed)
-# plt.subplot(2,1,1)
-# plt.imshow(images3[0])
-# plt.subplot(2,1,2)
-# plt.imshow(images3[1])
-# plt.show()
-#
-# images4 = noise(images, seed)
-# plt.subplot(2,1,1)
-# plt.imshow(images4[0])
-# plt.subplot(2,1,2)
-# plt.imshow(images4[1])
-# plt.show()
-#
-# images5 = rotation45(images)
-# plt.subplot(2,1,1)
-# plt.imshow(images5[0])
-# plt.subplot(2,1,2)
-# plt.imshow(images5[1])
-# plt.show()

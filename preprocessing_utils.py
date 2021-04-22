@@ -59,6 +59,10 @@ def make_dataset(images_directory: str,
                  train_pairs_file_path: str = 'lfw2Data/pairsDevTrain.txt',
                  test_pairs_file_path: str = 'lfw2Data/pairsDevTest.txt',
                  seed: int = 0):
+    """
+    This function generates training, validation and test datasets.
+    Also, generates one-shot validation/test accuracy tests configured by the given n parameter which defines how many n-way to create.
+    """
 
     def configure_for_performance(ds, batchsize: int, is_training=False):
         ds = ds.cache()
@@ -79,10 +83,6 @@ def make_dataset(images_directory: str,
         return image
 
     def load_images_pairs_as_tensors(img_pairs):
-        """
-        :param img_pairs:
-        :return:
-        """
         return read_image(img_pairs[0]), read_image(img_pairs[1])
 
     def get_full_image_path(images_root_path, name, idx):
@@ -262,140 +262,3 @@ def make_dataset(images_directory: str,
     one_shot_test_ds_list = turn_to_zipped_one_shot_ds(test_one_shot_tests)
 
     return training_ds, val_ds, test_ds, one_shot_val_ds_list, one_shot_test_ds_list
-
-# TODO remove
-def generate_n_way_oneshot_accuracy_test(dataset: tf.data.Dataset,
-                                         name_to_idxs_in_val: dict,
-                                         trained_sets: dict,
-                                         N: int = 5) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
-    """
-    generates two tf.data.Dataset objects containing the image pairs and labels.
-    all of first images within the pairs are of the same person, and all of the 2nd
-    images (excluding the first pair) are of different people.
-    Accordingly, all labels are set to 0 (non-matching) excluding the first pair in the set,
-    set to 1 (matching).
-    Example for name_to_idxs_in_val dict:
-        name_to_idxs_in_val = {
-        (SampleIDX, colIDX)
-        'Abdoulaye_Wade': [(0, 0), (0, 1), (1, 0)],
-        'Adam_Ant': [(2, 0)],
-        'Alvaro_Uribe': [(3, 0), (3, 1)],
-        'Abdulaziz_Kamilov': [(1, 1)],
-        'Adam_Scott': [(2, 0)]
-    }
-    Example for trained_sets dict:
-    trained_sets = {
-        'Abdoulaye_Wade': ['Adam_Ant', 'Alvaro_Uribe', 'Adam_Scott']
-    }
-
-    :param dataset: a tf.data.BatchedDataset - the validation/test set for a simple accuracy metric.
-    :param name_to_idxs_in_val: dictionary - holds the images indices in the validation/test dataset
-    (all batches are flattened).
-    :param trained_sets: dictioinary - holds the already trained pairs by person name.
-    :param N: int - the size of the n-way testset
-    :return: Tuple[tf.data.Dataset - image pairs, tf.data.Dataset - labels]
-    """
-    def get_person_name_by_indices(sample_idx:int, col_idx:int, names_to_indices: dict):
-        indices_tuple = (sample_idx, col_idx)
-        # iterate over names:
-        for name, indices_lst in names_to_indices.items():
-            if indices_tuple in indices_lst:
-                return name
-
-    def choose_random_from_matching(all_images_ds: tf.data.Dataset):
-        sample_idx = 0
-        random_match = None
-        for batch in all_images_ds:
-            images_in_batch = batch[0]
-            labels_in_batch = batch[1]
-            for i in range(len(labels_in_batch)):
-                if labels_in_batch[i] == 1:
-                    if np.random.rand(1) >= 0.5:
-                        im1 = images_in_batch[i][0]
-                        im2 = images_in_batch[i][1]
-                        return im1, im2, sample_idx
-                sample_idx += 1
-        # if all randoms < 0.5, pick the first matching
-        sample_idx = 0
-        if random_match is None:
-            for batch in all_images_ds:
-                images_in_batch = batch[0]
-                labels_in_batch = batch[1]
-                for i in range(len(labels_in_batch)):
-                    if labels_in_batch[i] == 1:
-                        im1 = images_in_batch[i][0]
-                        im2 = images_in_batch[i][1]
-                        return im1, im2, sample_idx
-                    sample_idx += 1
-
-        return random_match
-
-    def check_if_pair_was_trained(person_name1:str, person_name2:str):
-        def check_if_trained_with_image(name: str, images_trained_lst: list):
-            return name in images_trained_lst
-        trained_with_image1 = trained_sets.get(person_name1, [])
-        trained_with_image2 = trained_sets.get(person_name2, [])
-        return check_if_trained_with_image(person_name2, trained_with_image1) or \
-               check_if_trained_with_image(person_name1, trained_with_image2)
-
-    def get_image_by_idx(indices: Tuple[int, int]) -> tf.Tensor:
-        target_sample_idx, target_col_idx = indices[0], indices[1]
-        sample_idx = 0
-        for batch in dataset:
-            images_in_batch = batch[0]
-            labels_in_batch = batch[1]
-            for i in range(len(labels_in_batch)):
-                if target_sample_idx == sample_idx:
-                    return images_in_batch[i][target_col_idx]
-                sample_idx += 1
-
-    def gather_non_matching_from_ds(image_to_compare: tf.Tensor,
-                                    all_dataset: tf.data.Dataset,
-                                    person_name: str,
-                                    name_to_indices: dict):
-
-
-        # remove the indices of the person from the possible choices:
-        name_to_indices.pop(person_name)
-        non_matching_images = []
-
-        while len(non_matching_images) < N-1:
-            # take a random name of the remaining names.
-            random_key = list(name_to_indices.keys())[int(np.random.rand(1) * len(name_to_indices.keys()))]
-            # check if both were already seen in training (prevent leakage)
-            if not check_if_pair_was_trained(person_name1=person_name, person_name2=random_key):
-                # get an image of the 2nd person (random key)
-                random_im_indices = name_to_indices[random_key][int(np.random.rand(1)*len(name_to_indices[random_key]))]
-                image2_to_compare = get_image_by_idx(random_im_indices)
-
-                non_matching_images.append((image_to_compare, image2_to_compare))
-
-        return non_matching_images
-
-    input_pairs, labels = [], []
-
-    # read the dataset - assuming this is the validation/test set only
-    # choose a random image path from the matching pairs
-    matching_im1, matching_im2, sample_idx = choose_random_from_matching(dataset)
-
-    # add the matching tuple to the test set
-    input_pairs.append((matching_im1, matching_im2))
-    labels.append(1)
-
-    # choose one of the images of the chosen pair and gather all non matching images
-    rand_col_idx = int(np.random.rand(1)[0] * 2)
-    name_of_person = get_person_name_by_indices(sample_idx=sample_idx,
-                                                col_idx=rand_col_idx,
-                                                names_to_indices=name_to_idxs_in_val)
-
-    non_matching_to_test = gather_non_matching_from_ds(image_to_compare=[matching_im1, matching_im2][rand_col_idx],
-                                                       all_dataset=dataset,
-                                                       person_name=name_of_person,
-                                                       name_to_indices=name_to_idxs_in_val)
-    input_pairs += non_matching_to_test
-    labels += np.zeros(len(non_matching_to_test), dtype=int).tolist()
-    # convert all to tf tensor datasets
-    input_pairs, labels = tf.data.Dataset.from_tensor_slices(np.array(input_pairs)), \
-                          tf.data.Dataset.from_tensor_slices(np.array(labels))
-
-    return input_pairs, labels
