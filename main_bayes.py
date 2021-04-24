@@ -36,11 +36,11 @@ def main():
     tf_log_dir = drive_prefix + "/tf_logs/tuner/" + project_name
     csv_file_name = directory + "/" + project_name + "/" + project_name + ".csv"
 
-    augment_dataset = False
+    augment_dataset = True
     overwrite = False
     run_bayes_search = False
-    use_transfer_learning_architecture = True
-    image_resize = False
+    use_transfer_learning_architecture = False
+    image_resize = True
     lfw_a_input_shape = (150, 150, 1) if image_resize else (250, 250, 1)
     input_shape = mobilenet_input_shape if use_transfer_learning_architecture else lfw_a_input_shape
 
@@ -56,10 +56,10 @@ def main():
 
     if not run_bayes_search:
         hp = HyperParameters()
-        hp.Fixed('learning_rate', 0.00001)
+        hp.Fixed('learning_rate', 0.00005)
         hp.Fixed('dense_layer_size', 1024)
-        hp.Fixed('enable_batch_normalization', False)
-        hp.Fixed('bias_initializer', "zeros")
+        hp.Fixed('enable_batch_normalization', True)
+        hp.Fixed('bias_initializer', "default")
         hp.Fixed('conv2D_kernel_initializer', "he_normal")
         hp.Fixed('dense_kernel_initializer',  "he_normal")
         hp.Fixed('dropout_rate', 0.0)
