@@ -30,7 +30,7 @@ def main():
     seed = 0
     mobilenet_input_shape = (224, 224, 3)
     images_directory = "./lfw2Data/lfw2/"
-    project_name = "batch_32_without_data_augmentation"
+    project_name = "batch_64_with_data_augmentation_image_resized_150_150_150trials_10models_50epochs"
     drive_prefix = "./"
     directory = drive_prefix + "/tuner_results"
     tf_log_dir = drive_prefix + "/tf_logs/tuner/" + project_name
